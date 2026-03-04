@@ -556,6 +556,8 @@ function drawChart(xLabels, datasets, chipRange, prizeList, stacks) {
       scales: {
         x: {
           type: "linear",
+          min: -chipRange,
+          max: chipRange,
           grid: { color: "#1e3a50", lineWidth: 1.5 },
           ticks: {
             color: "#9dc4d8",
