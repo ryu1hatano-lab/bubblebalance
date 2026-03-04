@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BubbleBalance</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Bebas+Neue&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #080c10; --bg2: #0c1520; --bg3: #0f1923;
+    --border: #16242f; --border2: #243040;
+    --text: #dde3ea; --muted: #3d5566; --dim: #243040;
+    --blue: #4fc3f7; --orange: #ffa726; --green: #66bb6a;
+    --red: #ef5350; --purple: #ce93d8; --brown: #a1887f;
+    --teal: #80cbc4; --yellow: #fff176;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Mono', 'Courier New', monospace; font-size: 13px; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg2); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* Layout */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  #header {
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 13px 24px; display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+  }
+  #header .suit { font-size: 22px; color: #2d5a7a; }
+  #header h1 { font-family: 'Bebas Neue'; font-size: 23px; letter-spacing: 0.12em; color: var(--blue); line-height: 1; }
+  #header p  { font-size: 9px; color: #2d4a5a; letter-spacing: 0.1em; margin-top: 2px; }
+  #main { display: flex; flex: 1; min-height: 0; }
+
+  /* Left panel */
+  #left {
+    width: 300px; flex-shrink: 0; background: var(--bg2);
+    border-right: 1px solid var(--border);
+    padding: 16px 14px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .sec {
+    font-family: 'Bebas Neue'; font-size: 11px; letter-spacing: 0.18em;
+    color: var(--muted); border-bottom: 1px solid var(--border);
+    padding-bottom: 4px; margin-bottom: 9px;
+  }
+  input, select, textarea {
+    background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text); padding: 5px 8px; border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    outline: none; transition: border-color 0.2s; width: 100%;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--blue); }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  /* Player row */
+  .player-row {
+    display: grid; grid-template-columns: 22px 28px 1fr 26px;
+    gap: 6px; align-items: center; margin-bottom: 6px;
+    padding: 7px 9px; border-radius: 4px; background: var(--bg3);
+    border: 1px solid var(--border);
+  }
+  .player-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: #000; flex-shrink: 0;
+  }
+  .player-name-label {
+    font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.04em;
+  }
+  input.stack-input {
+    font-size: 14px; font-weight: 600; text-align: center;
+    padding: 6px 4px; width: 100%; min-width: 0;
+  }
+  .del-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 3px; cursor: pointer; font-size: 11px; padding: 2px 6px;
+    transition: all 0.12s; font-family: 'IBM Plex Mono', monospace;
+  }
+  .del-btn:hover { border-color: #ef535044; color: var(--red); }
+  .add-btn {
+    width: 100%; background: none; border: 1px dashed #1e3020; color: #2d5030;
+    border-radius: 3px; cursor: pointer; font-size: 11px; padding: 6px;
+    font-family: 'IBM Plex Mono', monospace; transition: all 0.15s;
+  }
+  .add-btn:hover { border-color: #66bb6a44; color: var(--green); }
+
+  /* Preset buttons */
+  .preset-row { display: flex; gap: 5px; margin-bottom: 9px; }
+  .preset-btn {
+    flex: 1; padding: 5px 6px; border-radius: 3px; cursor: pointer; font-size: 9px;
+    font-family: 'IBM Plex Mono', monospace; border: 1px solid var(--border2);
+    background: var(--bg3); color: var(--muted); transition: all 0.15s;
+    white-space: nowrap; letter-spacing: 0.02em;
+  }
+  .preset-btn.active { background: #091828; border-color: #4fc3f766; color: var(--blue); }
+  .preset-btn:hover:not(.active) { border-color: var(--muted); color: #7a9ab0; }
+
+  /* Generate button */
+  .gen-btn {
+    width: 100%; padding: 11px; background: var(--blue); color: #060c10;
+    border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
+    font-family: 'Bebas Neue'; letter-spacing: 0.15em; transition: background 0.15s;
+  }
+  .gen-btn:hover { background: #81d4fa; }
+
+  /* Error */
+  .error-box {
+    padding: 7px 10px; background: #150808; border: 1px solid #ef535022;
+    border-radius: 3px; color: var(--red); font-size: 10px;
+  }
+
+  /* Tag */
+  .tag {
+    font-size: 9px; padding: 1px 5px; border-radius: 2px;
+    letter-spacing: 0.05em; font-weight: 600; white-space: nowrap;
+  }
+  .tag-hero    { background: #0a2030; color: var(--blue);   border: 1px solid #4fc3f733; }
+  .tag-villain { background: #1e1200; color: var(--orange); border: 1px solid #ffa72633; }
+  .tag-obs     { background: #111827; color: var(--muted);  border: 1px solid #1e2d3d; }
+
+  /* EV row */
+  .ev-row {
+    display: flex; align-items: center; gap: 7px;
+    margin-bottom: 5px; font-size: 11px;
+  }
+  .ev-line { width: 20px; height: 2px; flex-shrink: 0; }
+
+  /* Pot selector */
+  .pot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pot-label { font-size: 9px; margin-bottom: 5px; letter-spacing: 0.06em; }
+
+  /* Right panel */
+  #right { flex: 1; padding: 18px 20px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  #chart-title { margin-bottom: 12px; }
+  #chart-title h2 { font-family: 'Bebas Neue'; font-size: 18px; letter-spacing: 0.1em; color: #c0cdd8; }
+  #chart-title .sub1 { font-size: 9px; color: var(--dim); margin-top: 2px; }
+  #chart-title .sub2 { font-size: 9px; color: #4fc3f733; margin-top: 1px; }
+  #chart-wrap { flex: 1; min-height: 0; position: relative; }
+  canvas#myChart { width: 100% !important; height: 100% !important; }
+
+  /* Metric cards */
+  #metrics {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px; margin-top: 12px; flex-shrink: 0;
+  }
+  .metric-card {
+    padding: 10px 12px; background: var(--bg2); border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .metric-card-title { font-size: 9px; font-weight: 600; letter-spacing: 0.07em; margin-bottom: 7px; }
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .metric-item-label { font-size: 8px; color: var(--dim); margin-bottom: 1px; }
+  .metric-item-val { font-size: 13px; }
+
+  /* Prize list */
+  .prize-list { font-size: 10px; color: var(--muted); line-height: 1.9; }
+  .prize-list-row { display: flex; justify-content: space-between; max-width: 175px; }
+  .prize-list-rank { color: var(--dim); }
+
+  #custom-prize-wrap { display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div id="header">
+    <span class="suit">♠</span>
+    <div>
+      <h1>BubbleBalance</h1>
+      <p>ICM Asymmetry Visualizer · POKER MTT · INDEPENDENT CHIP MODEL</p>
+    </div>
+  </div>
+
+  <div id="main">
+    <!-- Left Panel -->
+    <div id="left">
+
+      <!-- Players -->
+      <div>
+        <div class="sec">PLAYERS (MAX 8)</div>
+        <div id="players-list"></div>
+        <div style="text-align:right;font-size:9px;color:var(--dim);margin-bottom:5px">単位: BB</div>
+        <button class="add-btn" id="add-player-btn" onclick="addPlayer()">＋ プレイヤー追加</button>
+      </div>
+
+      <!-- Pot players -->
+      <div>
+        <div class="sec">POT PLAYERS</div>
+        <div class="pot-grid">
+          <div>
+            <div class="pot-label" style="color:var(--blue)">HERO <span style="color:var(--dim)">破線・反転</span></div>
+            <select id="hero-sel" onchange="render()"></select>
+          </div>
+          <div>
+            <div class="pot-label" style="color:var(--orange)">VILLAIN</div>
+            <select id="villain-sel" onchange="render()"></select>
+          </div>
+        </div>
+        <div style="margin-top:7px;font-size:9px;color:var(--dim);line-height:1.7" id="pot-hint"></div>
+      </div>
+
+      <!-- Prize structure -->
+      <div>
+        <div class="sec">PRIZE STRUCTURE</div>
+        <div class="preset-row">
+          <button class="preset-btn active" id="btn-mtt1000" onclick="setPrize('mtt1000')">MTT 1000</button>
+          <button class="preset-btn"        id="btn-mtt200"  onclick="setPrize('mtt200')">MTT 200</button>
+          <button class="preset-btn"        id="btn-custom"  onclick="setPrize('custom')">手入力</button>
+        </div>
+        <div id="prize-list-wrap" class="prize-list"></div>
+        <div id="custom-prize-wrap">
+          <div style="font-size:9px;color:var(--dim);margin-bottom:5px">1位から順にカンマ区切り</div>
+          <textarea id="custom-prizes" rows="3" oninput="render()">30380, 21920, 15880, 11520, 8340, 6120</textarea>
+        </div>
+      </div>
+
+      <!-- Generate -->
+      <button class="gen-btn" onclick="generate()">▶ GENERATE</button>
+      <div id="error-box" class="error-box" style="display:none"></div>
+
+      <!-- EV table -->
+      <div id="ev-section" style="display:none">
+        <div class="sec">CURRENT ICM $EV</div>
+        <div id="ev-list"></div>
+      </div>
+
+    </div><!-- /left -->
+
+    <!-- Right Panel -->
+    <div id="right">
+      <div id="chart-title">
+        <h2 id="title-text">—</h2>
+        <div class="sub1" id="prize-sub"></div>
+        <div class="sub2" id="mirror-sub"></div>
+      </div>
+      <div id="chart-wrap">
+        <canvas id="myChart"></canvas>
+      </div>
+      <div id="metrics"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const COLORS = ["#4fc3f7","#ffa726","#66bb6a","#ef5350","#ce93d8","#a1887f","#80cbc4","#fff176"];
+const LABELS = ["A","B","C","D","E","F","G","H"];
+
+const PRESETS = {
+  mtt1000: { label: "MTT 1000 players", values: [30380,21920,15880,11520,8340,6120,4480,3280,2780] },
+  mtt200:  { label: "MTT 200 players",  values: [7656,5668,4196,3204,2456,1924,1484,1140,888] },
+  custom:  { label: "手入力", values: null },
+};
+
+// ── State ──────────────────────────────────────────────────────────────────
+let players = [
+  {label:"A",stack:28},{label:"B",stack:24},
+  {label:"C",stack:12},{label:"D",stack:12},
+  {label:"E",stack:12},{label:"F",stack:12},
+];
+let heroIdx = 0, villainIdx = 1;
+let prizeMode = "mtt1000";
+let chart = null;
+
+// ── ICM ────────────────────────────────────────────────────────────────────
+function calcICM(stacks, prizes) {
+  const memo = new Map();
+  const tagged = stacks.map((s,i) => ({v:s,idx:i}));
+  function icm2(ts, pi) {
+    if (pi >= prizes.length || ts.length === 0) return {};
+    const key = ts.map(t=>t.idx+":"+t.v).join(",")+"|"+pi;
+    if (memo.has(key)) return memo.get(key);
+    const total = ts.reduce((a,t)=>a+t.v, 0);
+    const result = {};
+    const prize = prizes[pi];
+    for (let i = 0; i < ts.length; i++) {
+      const prob = ts[i].v / total;
+      const next = [...ts.slice(0,i),...ts.slice(i+1)];
+      const sub = icm2(next, pi+1);
+      const idx = ts[i].idx;
+      result[idx] = (result[idx]||0) + prob * prize;
+      for (const [k,v] of Object.entries(sub))
+        result[k] = (result[k]||0) + prob * v;
+    }
+    memo.set(key, result);
+    return result;
+  }
+  const res = icm2(tagged, 0);
+  return stacks.map((_,i) => res[i]||0);
+}
+
+// ── Prize helpers ──────────────────────────────────────────────────────────
+function getPrizeList() {
+  if (prizeMode === "custom") {
+    return document.getElementById("custom-prizes").value
+      .split(/[,\s\/]+/).map(s=>s.trim()).filter(Boolean).map(Number);
+  }
+  return PRESETS[prizeMode].values;
+}
+
+function setPrize(mode) {
+  prizeMode = mode;
+  ["mtt1000","mtt200","custom"].forEach(k => {
+    document.getElementById("btn-"+k).classList.toggle("active", k===mode);
+  });
+  const listWrap = document.getElementById("prize-list-wrap");
+  const customWrap = document.getElementById("custom-prize-wrap");
+  if (mode === "custom") {
+    listWrap.innerHTML = "";
+    customWrap.style.display = "block";
+  } else {
+    customWrap.style.display = "none";
+    listWrap.innerHTML = PRESETS[mode].values.map((v,i)=>
+      `<div class="prize-list-row"><span class="prize-list-rank">${i+1}位</span><span>$${v.toLocaleString()}</span></div>`
+    ).join("");
+  }
+}
+
+// ── Player list rendering ──────────────────────────────────────────────────
+function renderPlayerList() {
+  const list = document.getElementById("players-list");
+  list.innerHTML = players.map((p,i) => `
+    <div class="player-row" style="border-color:${i===heroIdx?'#4fc3f71a':i===villainIdx?'#ffa7261a':'var(--border)'}">
+      <div class="player-dot" style="background:${COLORS[i]}">${p.label.charAt(0)}</div>
+      <span class="player-name-label" style="color:${COLORS[i]}">${p.label}</span>
+      <input type="number" value="${p.stack}" min="1" oninput="updateStack(${i},this.value)"
+        class="stack-input" style="width:100%">
+      <button class="del-btn" onclick="removePlayer(${i})">✕</button>
+    </div>
+  `).join("");
+
+  document.getElementById("add-player-btn").style.display = players.length >= 8 ? "none" : "block";
+
+  // Selects
+  const heroSel = document.getElementById("hero-sel");
+  const vilSel  = document.getElementById("villain-sel");
+  const opts = players.map((p,i)=>{ const n=p.name?` ${p.name}`:''; return `<option value="${i}">${p.label}${n} (${p.stack}bb)</option>`; }).join("");
+  heroSel.innerHTML = opts;
+  vilSel.innerHTML  = opts;
+  heroSel.value = heroIdx;
+  vilSel.value  = villainIdx;
+
+  heroSel.onchange = () => { heroIdx = +heroSel.value; renderPlayerList(); };
+  vilSel.onchange  = () => { villainIdx = +vilSel.value; renderPlayerList(); };
+
+  document.getElementById("pot-hint").innerHTML =
+    `X軸正方向 = ${players[heroIdx]?.label}がチップ獲得 / ${players[villainIdx]?.label}がチップ喪失<br>
+     ヒーロー線のみX軸を反転し重ねて表示 → 非対称性を可視化`;
+}
+
+function updateLabel(i, v) { players[i].label = v; renderPlayerList(); }
+function updateName(i, v) { players[i].name = v; renderPlayerList(); }
+function updateStack(i, v) {
+  players[i].stack = v === "" ? "" : Number(v);
+  // Update selects without full re-render to preserve input focus
+  const heroSel = document.getElementById("hero-sel");
+  const vilSel  = document.getElementById("villain-sel");
+  const opts = players.map((p,idx)=>{ return `<option value="${idx}">${p.label} (${p.stack}bb)</option>`; }).join("");
+  heroSel.innerHTML = opts; heroSel.value = heroIdx;
+  vilSel.innerHTML  = opts; vilSel.value  = villainIdx;
+}
+
+function addPlayer() {
+  if (players.length >= 8) return;
+  players.push({ label: LABELS[players.length], stack: 12 });
+  renderPlayerList();
+}
+
+function removePlayer(i) {
+  if (players.length <= 2) return;
+  players.splice(i, 1);
+  if (heroIdx === i)    heroIdx = 0;
+  if (villainIdx === i) villainIdx = Math.min(1, players.length-1);
+  if (heroIdx >= players.length)    heroIdx = 0;
+  if (villainIdx >= players.length) villainIdx = Math.min(1, players.length-1);
+  renderPlayerList();
+}
+
+// ── Generate ───────────────────────────────────────────────────────────────
+function showError(msg) {
+  const box = document.getElementById("error-box");
+  box.style.display = msg ? "block" : "none";
+  box.textContent = msg ? "⚠ " + msg : "";
+}
+
+function generate() {
+  showError("");
+  try {
+    const prizeList = getPrizeList();
+    if (!prizeList || prizeList.some(isNaN) || prizeList.length === 0)
+      throw new Error("賞金構造が無効です");
+    const stacks = players.map(p => Number(p.stack));
+    if (stacks.some(isNaN) || stacks.some(s => s <= 0))
+      throw new Error("スタックが無効です");
+    if (heroIdx === villainIdx)
+      throw new Error("ヒーローとビランは別のプレイヤーにしてください");
+
+    const chipRange = Math.min(stacks[heroIdx], stacks[villainIdx]);
+    const steps = 40;
+
+    // raw ICM map
+    const rawMap = new Map();
+    for (let step = -steps; step <= steps; step++) {
+      const delta = parseFloat(((step / steps) * chipRange).toFixed(3));
+      const s = [...stacks];
+      s[heroIdx]    = Math.max(0.01, stacks[heroIdx]    + delta);
+      s[villainIdx] = Math.max(0.01, stacks[villainIdx] - delta);
+      rawMap.set(delta, calcICM(s, prizeList));
+    }
+
+    // Build data arrays
+    const xLabels = [];
+    const heroData = [];
+    const heroNormalData = [];
+    const seriesData = players.map(() => []); // indexed by player
+
+    for (let step = -steps; step <= steps; step++) {
+      const delta = parseFloat(((step / steps) * chipRange).toFixed(3));
+      const neg   = parseFloat((-(step / steps) * chipRange).toFixed(3));
+      const icmNow = rawMap.get(delta);
+      const icmMir = rawMap.get(neg) || icmNow;
+
+      xLabels.push(delta);
+      heroNormalData.push(Math.round(icmNow[heroIdx]));
+      heroData.push(Math.round(icmMir[heroIdx]));
+      players.forEach((p, i) => {
+        if (i !== heroIdx) seriesData[i].push(Math.round(icmNow[i]));
+      });
+    }
+
+    // Build chart datasets
+    const datasets = [];
+
+    const pName = (p) => p.label;
+    // Hero (solid, normal direction)
+    datasets.push({
+      label: `${pName(players[heroIdx])} (${players[heroIdx].stack}bb)`,
+      data: heroNormalData,
+      borderColor: COLORS[heroIdx],
+      borderWidth: 4,
+      borderDash: [],
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      tension: 0.4,
+    });
+    // Hero (dashed, mirrored)
+    datasets.push({
+      label: `${pName(players[heroIdx])} (${players[heroIdx].stack}bb) [反転]`,
+      data: heroData,
+      borderColor: COLORS[heroIdx],
+      borderWidth: 5,
+      borderDash: [10, 4],
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      tension: 0.4,
+    });
+
+    // Others
+    players.forEach((p, i) => {
+      if (i === heroIdx) return;
+      datasets.push({
+        label: `${pName(p)} (${p.stack}bb)`,
+        data: seriesData[i],
+        borderColor: COLORS[i],
+        borderWidth: i === villainIdx ? 5 : 3,
+        borderDash: [],
+        pointRadius: 0,
+        pointHoverRadius: 3,
+        tension: 0.4,
+      });
+    });
+
+    drawChart(xLabels, datasets, chipRange, prizeList, stacks);
+    updateEVTable(prizeList, stacks);
+    updateMetrics(xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange);
+
+  } catch(e) {
+    showError(e.message);
+  }
+}
+
+// ── Chart ──────────────────────────────────────────────────────────────────
+function drawChart(xLabels, datasets, chipRange, prizeList, stacks) {
+  const heroP    = players[heroIdx];
+  const villainP = players[villainIdx];
+
+  // Title
+  document.getElementById("title-text").textContent =
+    `${heroP.label} →D — [${players.map(p=>`${p.label}(${p.stack}bb)`).join(", ")}]`;
+  document.getElementById("prize-sub").textContent =
+    "Prizes: " + prizeList.slice(0,6).map(v=>"$"+v.toLocaleString()).join(" / ")
+    + (prizeList.length>6?" …":"") + `  ·  移動範囲: ±${chipRange}BB`;
+  document.getElementById("mirror-sub").textContent =
+    `破線(${heroP.label}): X軸反転 — 右端 = ${heroP.label} チップ全獲得 / 左端 = 全喪失`;
+
+  if (chart) { chart.destroy(); chart = null; }
+
+  const ctx = document.getElementById("myChart").getContext("2d");
+  chart = new Chart(ctx, {
+    type: "line",
+    data: { labels: xLabels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      layout: { padding: { top: 28 } },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          backgroundColor: "#0c1520",
+          borderColor: "#243040", borderWidth: 1,
+          titleColor: "#4fc3f7",
+          bodyColor: "#dde3ea",
+          titleFont: { family: "'IBM Plex Mono'", size: 12 },
+          bodyFont:  { family: "'IBM Plex Mono'", size: 12 },
+          usePointStyle: false,
+          boxWidth: 12, boxHeight: 12,
+          callbacks: {
+            labelColor(item) {
+              return { borderColor: item.dataset.borderColor, backgroundColor: item.dataset.borderColor, borderWidth: 0 };
+            },
+            title: items => {
+              const v = parseFloat(items[0].label);
+              return `${heroP.label}の移動: ${v > 0 ? "+" : ""}${v} BB`;
+            },
+            label: item => ` ${item.dataset.label}: $${Number(item.raw).toLocaleString()}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: "linear",
+          grid: { color: "#1e3a50", lineWidth: 1.5 },
+          ticks: {
+            color: "#9dc4d8",
+            font: { family: "'IBM Plex Mono'", size: 20 },
+            callback: v => v > 0 ? "+"+v : v,
+            maxTicksLimit: 12,
+          },
+          title: {
+            display: true,
+            text: `移動チップ量 [BB]   (正方向 = ${heroP.label} 獲得 / ${villainP.label} 喪失)`,
+            color: "#9dc4d8",
+            font: { family: "'IBM Plex Mono'", size: 18 },
+            padding: { top: 10 },
+          },
+          border: { color: "#2d5a7a" },
+        },
+        y: {
+          grid: { color: "#1e3a50", lineWidth: 1.5 },
+          ticks: {
+            color: "#9dc4d8",
+            font: { family: "'IBM Plex Mono'", size: 20 },
+            callback: v => v >= 1000 ? (v/1000).toFixed(0)+"k" : v,
+          },
+          title: {
+            display: true, text: "ICM $EV [USD]",
+            color: "#9dc4d8",
+            font: { family: "'IBM Plex Mono'", size: 18 },
+          },
+          border: { color: "#2d5a7a" },
+        }
+      }
+    },
+    plugins: [{
+      id: "customLegend",
+      afterDraw(chart) {
+        const {ctx, chartArea: {left, right, top}, data: {datasets}} = chart;
+        const font = "12px 'IBM Plex Mono', monospace";
+        ctx.save();
+        ctx.font = font;
+        const boxSize = 12;
+        const padX = 10;
+        const padBetween = 18;
+        // measure all items to right-align
+        const items = datasets.map((ds, i) => ({
+          label: ds.label,
+          color: ds.borderColor,
+          dashed: (ds.borderDash && ds.borderDash.length > 0),
+          hidden: !chart.isDatasetVisible(i),
+        }));
+        // layout: pack items left to right, starting from right side
+        const itemWidths = items.map(it => boxSize + 5 + ctx.measureText(it.label).width + padBetween);
+        const totalW = itemWidths.reduce((a,b)=>a+b,0) - padBetween;
+        let x = Math.max(left, (left + right) / 2 - totalW / 2);
+        const y = 8;
+        items.forEach((it, i) => {
+          const alpha = it.hidden ? 0.3 : 1;
+          ctx.globalAlpha = alpha;
+          // filled box
+          ctx.fillStyle = it.color;
+          ctx.fillRect(x, y, boxSize, boxSize);
+          // if dashed, draw a dash overlay
+          if (it.dashed) {
+            ctx.fillStyle = "#0c1520";
+            ctx.fillRect(x + 3, y + 4, 6, 4);
+            ctx.fillStyle = it.color;
+            ctx.fillRect(x, y + 4, 4, 4);
+            ctx.fillRect(x + 7, y + 4, 5, 4);
+          }
+          // label text
+          ctx.fillStyle = "#9ab8cc";
+          ctx.textBaseline = "middle";
+          ctx.fillText(it.label, x + boxSize + 5, y + boxSize / 2);
+          x += itemWidths[i];
+        });
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+    },{
+      id: "zeroline",
+      afterDraw(chart) {
+        const {ctx, scales: {x, y}} = chart;
+        const xPx = x.getPixelForValue(0);
+        ctx.save();
+        ctx.setLineDash([3,5]);
+        ctx.strokeStyle = "#2d4a5a";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(xPx, y.top);
+        ctx.lineTo(xPx, y.bottom);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+// ── EV Table ───────────────────────────────────────────────────────────────
+function updateEVTable(prizeList, stacks) {
+  const evs = calcICM(stacks, prizeList);
+  document.getElementById("ev-section").style.display = "block";
+  document.getElementById("ev-list").innerHTML = players.map((p,i) => {
+    const isH = i===heroIdx, isV = i===villainIdx;
+    const lineStyle = isH
+      ? `background: repeating-linear-gradient(90deg,${COLORS[i]} 0,${COLORS[i]} 5px,transparent 5px,transparent 8px); height:2px; width:20px`
+      : `background:${COLORS[i]}; height:2px; width:20px`;
+    return `
+      <div class="ev-row">
+        <div class="ev-line" style="${lineStyle}"></div>
+        <span style="color:${COLORS[i]};font-weight:600;min-width:14px">${p.label}</span>
+        <span style="color:var(--dim)">${p.stack}bb</span>
+        <span class="tag ${isH?'tag-hero':isV?'tag-villain':'tag-obs'}">${isH?"HERO":isV?"VIL":"OBS"}</span>
+        <span style="margin-left:auto;color:#7a9ab0">$${Math.round(evs[i]).toLocaleString()}</span>
+      </div>`;
+  }).join("");
+}
+
+// ── Metric Cards ───────────────────────────────────────────────────────────
+function updateMetrics(xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange) {
+  const stk = players.map(p=>Number(p.stack));
+  const baseEVs = calcICM(stk, prizeList);
+  const firstIdx = 0, lastIdx = heroData.length - 1;
+
+  const cards = [heroIdx, villainIdx].map(idx => {
+    const p    = players[idx];
+    const isH  = idx === heroIdx;
+    const col  = COLORS[idx];
+    const base = baseEVs[idx];
+
+    let winEV, loseEV;
+    if (isH) {
+      // hero_ev is mirrored: first point = most negative delta for villain = hero gains max
+      winEV  = heroData[firstIdx];
+      loseEV = heroData[lastIdx];
+    } else {
+      // villain/observer: first point = delta most negative = villain gains
+      const d = seriesData[idx];
+      winEV  = d[firstIdx];
+      loseEV = d[lastIdx];
+    }
+
+    return `
+      <div class="metric-card" style="border-color:${col}1f">
+        <div class="metric-card-title" style="color:${col}">${isH?"▶ HERO":"▶ VILLAIN"} — ${p.label} (${p.stack}bb)</div>
+        <div class="metric-grid">
+          <div><div class="metric-item-label">現在EV</div>  <div class="metric-item-val" style="color:#7a9ab0">$${Math.round(base).toLocaleString()}</div></div>
+          <div><div class="metric-item-label">勝利EV</div>  <div class="metric-item-val" style="color:#66bb6a">$${Math.round(isH?winEV:loseEV).toLocaleString()}</div></div>
+          <div><div class="metric-item-label">敗北EV</div>  <div class="metric-item-val" style="color:#ef5350">$${Math.round(isH?loseEV:winEV).toLocaleString()}</div></div>
+          <div><div class="metric-item-label">EV差幅</div>  <div class="metric-item-val" style="color:#ffa726">$${Math.round(Math.abs(winEV-loseEV)).toLocaleString()}</div></div>
+        </div>
+      </div>`;
+  });
+
+  document.getElementById("metrics").innerHTML = cards.join("");
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+setPrize("mtt1000");
+renderPlayerList();
+generate();
+</script>
+</body>
+</html>
