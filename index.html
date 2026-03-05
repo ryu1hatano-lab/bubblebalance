@@ -152,6 +152,43 @@
   #right { flex: 1; padding: 18px 20px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
   #chart-title { margin-bottom: 12px; }
   #chart-title h2 { font-family: 'Bebas Neue'; font-size: 18px; letter-spacing: 0.1em; color: #c0cdd8; }
+  #bottom-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 10px;
+    margin-top: 12px;
+    flex-shrink: 0;
+  }
+  .bf-card {
+    background: var(--bg2); border-radius: 5px;
+    padding: 12px 14px; border: 1px solid var(--border);
+  }
+  .bf-card-title {
+    font-family: 'Bebas Neue'; font-size: 11px; letter-spacing: 0.15em;
+    margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border);
+  }
+  .bf-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 5px; font-size: 11px;
+  }
+  .bf-row .label { color: var(--muted); font-size: 10px; }
+  .bf-row .val   { font-size: 13px; font-weight: 600; }
+  .bf-big {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .bf-big .label { color: var(--muted); font-size: 10px; letter-spacing: 0.05em; }
+  .bf-big .val   { font-size: 18px; font-weight: 700; }
+  .obs-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 4px; font-size: 11px;
+  }
+  .obs-name { display: flex; align-items: center; gap: 5px; }
+  .obs-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .cursor-pos {
+    font-size: 10px; color: var(--muted); margin-bottom: 8px; padding-bottom: 5px;
+    border-bottom: 1px solid var(--border); font-family: 'Bebas Neue'; letter-spacing: 0.1em;
+  }
   #chart-title .sub1 { font-size: 9px; color: var(--dim); margin-top: 2px; }
   #chart-title .sub2 { font-size: 9px; color: #4fc3f733; margin-top: 1px; }
   #chart-wrap { flex: 1; min-height: 0; position: relative; }
@@ -259,7 +296,7 @@
       <div id="chart-wrap">
         <canvas id="myChart"></canvas>
       </div>
-      <div id="metrics"></div>
+      <div id="bottom-panel"></div>
     </div>
   </div>
 </div>
@@ -277,9 +314,9 @@ const PRESETS = {
 
 // ── State ──────────────────────────────────────────────────────────────────
 let players = [
-  {label:"A",stack:28},{label:"B",stack:24},
-  {label:"C",stack:12},{label:"D",stack:12},
-  {label:"E",stack:12},{label:"F",stack:12},
+  {label:"A",stack:35},{label:"B",stack:20},
+  {label:"C",stack:20},{label:"D",stack:15},
+  {label:"E",stack:12},{label:"F",stack:10},
 ];
 let heroIdx = 0, villainIdx = 1;
 let prizeMode = "mtt1000";
@@ -674,49 +711,260 @@ function updateEVTable(prizeList, stacks) {
   }).join("");
 }
 
-// ── Metric Cards ───────────────────────────────────────────────────────────
+// ── Bottom Panel (BF + Observers) ─────────────────────────────────────────
+// Store chart data globally for cursor updates
+let _chartState = null;
+
 function updateMetrics(xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange) {
-  const stk = players.map(p=>Number(p.stack));
-  const baseEVs = calcICM(stk, prizeList);
-  const firstIdx = 0, lastIdx = heroData.length - 1;
+  _chartState = { xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange };
+  renderBottomPanel(0); // default at delta=0
+}
 
-  const cards = [heroIdx, villainIdx].map(idx => {
-    const p    = players[idx];
-    const isH  = idx === heroIdx;
-    const col  = COLORS[idx];
-    const base = baseEVs[idx];
+function renderBottomPanel(cursorDelta) {
+  if (!_chartState) return;
+  const { xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange } = _chartState;
 
-    let winEV, loseEV;
-    if (isH) {
-      // hero_ev is mirrored: first point = most negative delta for villain = hero gains max
-      winEV  = heroData[firstIdx];
-      loseEV = heroData[lastIdx];
-    } else {
-      // villain/observer: first point = delta most negative = villain gains
-      const d = seriesData[idx];
-      winEV  = d[firstIdx];
-      loseEV = d[lastIdx];
-    }
+  // Find closest index to cursorDelta
+  const steps = xLabels.length;
+  let idx = 0, minDist = Infinity;
+  xLabels.forEach((v, i) => { const d = Math.abs(v - cursorDelta); if (d < minDist) { minDist = d; idx = i; } });
 
-    return `
-      <div class="metric-card" style="border-color:${col}1f">
-        <div class="metric-card-title" style="color:${col}">${isH?"▶ HERO":"▶ VILLAIN"} — ${p.label} (${p.stack}bb)</div>
-        <div class="metric-grid">
-          <div><div class="metric-item-label">現在EV</div>  <div class="metric-item-val" style="color:#7a9ab0">$${Math.round(base).toLocaleString()}</div></div>
-          <div><div class="metric-item-label">勝利EV</div>  <div class="metric-item-val" style="color:#66bb6a">$${Math.round(isH?winEV:loseEV).toLocaleString()}</div></div>
-          <div><div class="metric-item-label">敗北EV</div>  <div class="metric-item-val" style="color:#ef5350">$${Math.round(isH?loseEV:winEV).toLocaleString()}</div></div>
-          <div><div class="metric-item-label">EV差幅</div>  <div class="metric-item-val" style="color:#ffa726">$${Math.round(Math.abs(winEV-loseEV)).toLocaleString()}</div></div>
-        </div>
-      </div>`;
+  const delta = xLabels[idx];
+  const baseEVs = calcICM(stacks, prizeList);
+
+  // ── Local BF calculation ──
+  // For a small step around cursor point
+  const step = Math.max(1, Math.floor(steps / 40));
+  const lo = Math.max(0, idx - step);
+  const hi = Math.min(steps - 1, idx + step);
+
+  // Hero (mirrored): hero_ev[idx] = ICM of hero when delta = -xLabels[idx]
+  // gain = heroData[lo] - heroData[idx]  (moving left = hero gains on mirrored axis)
+  // lose = heroData[idx] - heroData[hi]
+  const heroGain = heroData[lo] - heroData[idx];
+  const heroLose = heroData[idx] - heroData[hi];
+  const heroBF   = heroLose > 0 && heroGain > 0 ? heroLose / heroGain : null;
+
+  // Villain: normal direction
+  const vilData  = seriesData[villainIdx];
+  const vilGain  = vilData[hi] - vilData[idx];   // villain gains when delta increases (hero gains = villain loses... wait)
+  // villain gains chips when delta < 0 (hero loses), so villain's EV increases going left
+  const vilGain2 = vilData[lo] - vilData[idx];  // wait, villain EV goes DOWN as hero gains
+  // Actually villain EV is normal: decreases as delta increases (hero gains)
+  // villain gain = EV at delta going negative = vilData[lo]
+  // villain lose = EV at delta going positive = vilData[hi]
+  const vGain = vilData[lo] - vilData[idx];
+  const vLose = vilData[idx] - vilData[hi];
+  const vilBF = vLose > 0 && vGain > 0 ? vLose / vGain : null;
+
+  // ── General BF (full range endpoints) ──
+  const heroWinEV  = heroData[0];
+  const heroLoseEV = heroData[steps - 1];
+  const heroBaseEV = baseEVs[heroIdx];
+  const heroGenGain = heroWinEV - heroBaseEV;
+  const heroGenLose = heroBaseEV - heroLoseEV;
+  const heroGenBF   = heroGenLose > 0 && heroGenGain > 0 ? heroGenLose / heroGenGain : null;
+
+  const vilBaseEV  = baseEVs[villainIdx];
+  const vilWinEV   = vilData[0];
+  const vilLoseEV  = vilData[steps - 1];
+  const vilGenGain = vilWinEV - vilBaseEV;
+  const vilGenLose = vilBaseEV - vilLoseEV;
+  const vilGenBF   = vilGenLose > 0 && vilGenGain > 0 ? vilGenLose / vilGenGain : null;
+
+  // ── Observer changes ──
+  const heroP = players[heroIdx];
+  const vilP  = players[villainIdx];
+
+  const obsIndices = players.map((_,i)=>i).filter(i => i !== heroIdx && i !== villainIdx);
+
+  // ── Render ──
+  const fmt = v => v !== null ? v.toFixed(3) : "—";
+  const fmtD = v => { const s = Math.round(v); return (s >= 0 ? "+" : "") + "$" + Math.abs(s).toLocaleString(); };
+  const fmtDol = v => "$" + Math.round(v).toLocaleString();
+  const bfColor = bf => bf === null ? "#7a9ab0" : bf > 1.2 ? "#ef5350" : bf > 1.05 ? "#ffa726" : "#66bb6a";
+
+  // Cumulative BF for hero
+  // heroNormalData[i] = hero EV when xLabels[i] chips are transferred hero→villain
+  //   xLabels[i] < 0  →  hero GAINS chips  →  EV > baseEV
+  //   xLabels[i] > 0  →  hero LOSES chips  →  EV < baseEV
+  const absDeltaNum = Math.abs(delta);
+  const absDelta = absDeltaNum.toFixed(1);
+  // lose: xLabels = -absDeltaNum → hero LOSES (deltaが負 = villainがチップを失う = heroが得る... 待って)
+  // 再確認: xLabels[i] = delta = hero→villainのチップ移動量
+  //   delta < 0 → heroがvillainからチップを得る → hero EV 上がる
+  //   delta > 0 → heroがvillainにチップを失う → hero EV 下がる
+  // heroNormalData[i] at xLabels[i]=+absDeltaNum → hero LOST absDeltaNum → EV LOW
+  // heroNormalData[i] at xLabels[i]=-absDeltaNum → hero GAINED absDeltaNum → EV HIGH
+  // cumGain = EV_gained - EV_base = heroNormalData[negIdx] - base  (should be +)
+  // cumLose = EV_base - EV_lost  = base - heroNormalData[posIdx]   (should be +)
+  // BF = cumLose / cumGain  (should be > 1)
+  // 累積BF: カーソル位置のEVを直接使う
+  // heroNormalData[idx]: カーソル位置でのhero EV（そのままの方向）
+  // heroData[idx]:       カーソル位置でのhero EV（反転線 = 同量だけ逆方向に動いた場合）
+  // delta > 0 → heroが得る → heroNormalData[idx] > base → cumGain
+  // delta < 0 → heroが失う → heroNormalData[idx] < base → cumLose
+  // 常にidxそのままの値と反転した値を使う
+  // 累積BF: 常に|delta|bbの価値を計算（左右対称）
+  // posIdx: xLabels=+absDeltaNum → heroNormalData[posIdx] = hero gained absDelta chips
+  // negIdx: xLabels=-absDeltaNum → heroNormalData[negIdx] = hero lost absDelta chips
+  let cumPosIdx = 0, cumPosDist = Infinity;
+  let cumNegIdx = 0, cumNegDist = Infinity;
+  for (let ii = 0; ii < xLabels.length; ii++) {
+    const dp = Math.abs(xLabels[ii] - absDeltaNum);
+    if (dp < cumPosDist) { cumPosDist = dp; cumPosIdx = ii; }
+    const dn = Math.abs(xLabels[ii] - (-absDeltaNum));
+    if (dn < cumNegDist) { cumNegDist = dn; cumNegIdx = ii; }
+  }
+  const heroCumGain = heroNormalData[cumPosIdx] - heroBaseEV;  // gained absDelta → EV high
+  const heroCumLose = heroBaseEV - heroNormalData[cumNegIdx];  // lost absDelta   → EV low
+  const heroCumBF = absDeltaNum > 0 && heroCumGain > 0 && heroCumLose > 0
+    ? heroCumLose / heroCumGain : null;
+
+  // Card 1: Hero local BF
+
+  const heroCard = `
+    <div class="bf-card" style="border-color:${COLORS[heroIdx]}33">
+      <div class="bf-card-title" style="color:${COLORS[heroIdx]}">▶ HERO — ${heroP.label} (${heroP.stack}bb)</div>
+      <div class="cursor-pos">局所BF @ ${delta > 0 ? "+" : ""}${delta.toFixed(1)} BB</div>
+      <div class="bf-row"><span class="label">得る価値 (+${(xLabels[hi]-xLabels[idx]).toFixed(1)}bb)</span><span class="val" style="color:#66bb6a">+${heroGain > 0 ? "$"+Math.round(heroGain).toLocaleString() : "—"}</span></div>
+      <div class="bf-row"><span class="label">失う価値 (-${(xLabels[idx]-xLabels[lo]).toFixed(1)}bb)</span><span class="val" style="color:#ef5350">-${heroLose > 0 ? "$"+Math.round(heroLose).toLocaleString() : "—"}</span></div>
+      <div class="bf-big">
+        <span class="label">局所 BF</span>
+        <span class="val" style="color:#ffffff">${fmt(heroBF)}</span>
+      </div>
+      <div class="cursor-pos" style="margin-top:10px">累積BF（0BB → ±${absDelta}BB）</div>
+      <div class="bf-row"><span class="label">得る価値 (+${absDelta}bb)</span><span class="val" style="color:#66bb6a">${absDeltaNum > 0 ? "+$"+Math.round(heroCumGain).toLocaleString() : "—"}</span></div>
+      <div class="bf-row"><span class="label">失う価値 (-${absDelta}bb)</span><span class="val" style="color:#ef5350">${absDeltaNum > 0 ? "-$"+Math.round(heroCumLose).toLocaleString() : "—"}</span></div>
+      <div class="bf-big">
+        <span class="label">累積 BF</span>
+        <span class="val" style="color:#ffffff">${fmt(heroCumBF)}</span>
+      </div>
+    </div>`;
+
+  // Card 2: Villain local BF
+  // Cumulative BF for villain
+  // Villain累積BF: 常に|delta|bbの価値（左右対称）
+  // vilData: delta>0 → heroが得る = villainが失う → EV low
+  //          delta<0 → heroが失う = villainが得る → EV high
+  // villain gained = vilData[cumNegIdx] (xLabel=-absDelta, hero lost = villain gained)
+  // villain lost   = vilData[cumPosIdx] (xLabel=+absDelta, hero gained = villain lost)
+  const vilBaseEV2 = baseEVs[villainIdx];
+  const vilCumGain = vilData[cumNegIdx] - vilBaseEV2;
+  const vilCumLose = vilBaseEV2 - vilData[cumPosIdx];
+  const vilCumBF   = absDeltaNum > 0 && vilCumGain > 0 && vilCumLose > 0
+    ? vilCumLose / vilCumGain : null;
+
+  const vilCard = `
+    <div class="bf-card" style="border-color:${COLORS[villainIdx]}33">
+      <div class="bf-card-title" style="color:${COLORS[villainIdx]}">▶ VILLAIN — ${vilP.label} (${vilP.stack}bb)</div>
+      <div class="cursor-pos">局所BF @ ${delta > 0 ? "+" : ""}${delta.toFixed(1)} BB</div>
+      <div class="bf-row"><span class="label">得る価値 (+${(xLabels[idx]-xLabels[lo]).toFixed(1)}bb)</span><span class="val" style="color:#66bb6a">+${vGain > 0 ? "$"+Math.round(vGain).toLocaleString() : "—"}</span></div>
+      <div class="bf-row"><span class="label">失う価値 (-${(xLabels[hi]-xLabels[idx]).toFixed(1)}bb)</span><span class="val" style="color:#ef5350">-${vLose > 0 ? "$"+Math.round(vLose).toLocaleString() : "—"}</span></div>
+      <div class="bf-big">
+        <span class="label">局所 BF</span>
+        <span class="val" style="color:#ffffff">${fmt(vilBF)}</span>
+      </div>
+      <div class="cursor-pos" style="margin-top:10px">累積BF（0BB → ±${absDelta}BB）</div>
+      <div class="bf-row"><span class="label">得る価値 (+${absDelta}bb)</span><span class="val" style="color:#66bb6a">${absDeltaNum > 0 ? "+$"+Math.round(vilCumGain).toLocaleString() : "—"}</span></div>
+      <div class="bf-row"><span class="label">失う価値 (-${absDelta}bb)</span><span class="val" style="color:#ef5350">${absDeltaNum > 0 ? "-$"+Math.round(vilCumLose).toLocaleString() : "—"}</span></div>
+      <div class="bf-big">
+        <span class="label">累積 BF</span>
+        <span class="val" style="color:#ffffff">${fmt(vilCumBF)}</span>
+      </div>
+    </div>`;
+
+  // Card 3: General BF (full range, both perspectives)
+  const fmtDiff = v => (v >= 0 ? "+" : "") + "$" + Math.abs(Math.round(v)).toLocaleString();
+  const genCard = `
+    <div class="bf-card" style="border-color:#2d4a5a">
+      <div class="bf-card-title" style="color:#9dc4d8">一般 BF（全移動域）</div>
+      <div class="cursor-pos">ポット開始時点基準</div>
+      <div class="bf-row">
+        <span class="label" style="color:${COLORS[heroIdx]}">${heroP.label} 勝利EV</span>
+        <span class="val" style="color:#66bb6a">${fmtDiff(heroGenGain)}</span>
+      </div>
+      <div class="bf-row">
+        <span class="label" style="color:${COLORS[heroIdx]}">${heroP.label} 敗北EV</span>
+        <span class="val" style="color:#ef5350">${fmtDiff(-heroGenLose)}</span>
+      </div>
+      <div class="bf-big" style="margin-bottom:6px">
+        <span class="label">${heroP.label} 目線 BF</span>
+        <span class="val" style="color:#ffffff">${fmt(heroGenBF)}</span>
+      </div>
+      <div class="bf-row">
+        <span class="label" style="color:${COLORS[villainIdx]}">${vilP.label} 勝利EV</span>
+        <span class="val" style="color:#66bb6a">${fmtDiff(vilGenGain)}</span>
+      </div>
+      <div class="bf-row">
+        <span class="label" style="color:${COLORS[villainIdx]}">${vilP.label} 敗北EV</span>
+        <span class="val" style="color:#ef5350">${fmtDiff(-vilGenLose)}</span>
+      </div>
+      <div class="bf-big">
+        <span class="label">${vilP.label} 目線 BF</span>
+        <span class="val" style="color:#ffffff">${fmt(vilGenBF)}</span>
+      </div>
+    </div>`;
+
+  // Card 4: Observers change from delta=0
+  const midIdx = xLabels.findIndex(v => Math.abs(v) < 0.01) || Math.floor(steps/2);
+  let obsHTML = "";
+  if (obsIndices.length === 0) {
+    obsHTML = `<div style="color:var(--muted);font-size:10px;margin-top:10px">傍観者なし</div>`;
+  } else {
+    obsHTML = obsIndices.map(i => {
+      const baseEV = baseEVs[i];
+      const curEV  = seriesData[i][idx];
+      const diff   = curEV - baseEV;
+      const pct    = baseEV > 0 ? ((diff / baseEV) * 100).toFixed(2) : "0";
+      const col    = diff >= 0 ? "#66bb6a" : "#ef5350";
+      return `
+        <div class="obs-row">
+          <div class="obs-name">
+            <div class="obs-dot" style="background:${COLORS[i]}"></div>
+            <span style="color:${COLORS[i]};font-weight:600">${players[i].label}</span>
+            <span style="color:var(--dim);font-size:10px">${players[i].stack}bb</span>
+          </div>
+          <div style="text-align:right">
+            <span style="color:${col};font-weight:600">${fmtD(diff)}</span>
+            <span style="color:${col};font-size:9px;margin-left:4px">(${diff>=0?"+":""}${pct}%)</span>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  const obsCard = `
+    <div class="bf-card" style="border-color:#2d4a5a">
+      <div class="bf-card-title" style="color:#9dc4d8">傍観者 ICM変化</div>
+      <div class="cursor-pos">ポット開始時点 (0BB) からの増減 @ ${delta > 0 ? "+" : ""}${delta.toFixed(1)}BB</div>
+      ${obsHTML}
+    </div>`;
+
+  document.getElementById("bottom-panel").innerHTML = heroCard + vilCard + genCard + obsCard;
+}
+
+// Hook into chart tooltip for cursor sync
+function attachCursorSync() {
+  const canvas = document.getElementById("myChart");
+  canvas.addEventListener("mousemove", e => {
+    if (!chart || !_chartState) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const xScale = chart.scales.x;
+    if (!xScale) return;
+    const val = xScale.getValueForPixel(x);
+    if (val !== undefined) renderBottomPanel(val);
   });
-
-  document.getElementById("metrics").innerHTML = cards.join("");
+  canvas.addEventListener("mouseleave", () => {
+    if (_chartState) renderBottomPanel(0);
+  });
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
 setPrize("mtt1000");
 renderPlayerList();
 generate();
+attachCursorSync();
 </script>
 </body>
 </html>
