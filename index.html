@@ -73,10 +73,20 @@
 
   /* Player row */
   .player-row {
-    display: grid; grid-template-columns: 22px 28px 1fr 26px;
+    display: grid; grid-template-columns: 22px 28px 1fr 70px 26px;
     gap: 6px; align-items: center; margin-bottom: 6px;
     padding: 7px 9px; border-radius: 4px; background: var(--bg3);
     border: 1px solid var(--border);
+  }
+  .dead-label { font-size: 9px; color: #3a8a6a; letter-spacing:0.04em; text-align:center; }
+  .dead-input {
+    width: 100%; font-size: 13px; text-align: center;
+    background: var(--bg); border: 1px solid #2a4a3a; color: #80cbc4;
+    border-radius: 3px; padding: 4px 2px;
+  }
+  .pot-display {
+    margin-top: 8px; padding: 8px 10px; background: var(--bg2);
+    border: 1px solid #2d5a3a; border-radius: 4px; font-size: 11px;
   }
   .player-dot {
     width: 20px; height: 20px; border-radius: 50%;
@@ -104,7 +114,7 @@
   .add-btn:hover { border-color: #66bb6a44; color: var(--green); }
 
   /* Preset buttons */
-  .preset-row { display: flex; gap: 5px; margin-bottom: 9px; }
+  .preset-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
   .preset-btn {
     flex: 1; padding: 5px 6px; border-radius: 3px; cursor: pointer; font-size: 9px;
     font-family: 'IBM Plex Mono', monospace; border: 1px solid var(--border2);
@@ -239,6 +249,13 @@
       <div>
         <div class="sec">PLAYERS (MAX 8)</div>
         <div id="players-list"></div>
+      <div class="pot-display" id="pot-display" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted);font-size:10px;letter-spacing:0.08em">DEAD MONEY POT</span>
+          <span class="pot-val" id="pot-val">—</span>
+        </div>
+        <div style="font-size:9px;color:var(--dim);margin-top:3px" id="pot-detail"></div>
+      </div>
         <div style="text-align:right;font-size:9px;color:var(--dim);margin-bottom:5px">単位: BB</div>
         <button class="add-btn" id="add-player-btn" onclick="addPlayer()">＋ プレイヤー追加</button>
       </div>
@@ -264,13 +281,24 @@
         <div class="sec">PRIZE STRUCTURE</div>
         <div class="preset-row">
           <button class="preset-btn active" id="btn-mtt1000" onclick="setPrize('mtt1000')">MTT 1000</button>
-          <button class="preset-btn"        id="btn-mtt200"  onclick="setPrize('mtt200')">MTT 200</button>
-          <button class="preset-btn"        id="btn-custom"  onclick="setPrize('custom')">手入力</button>
+          <button class="preset-btn"        id="btn-mtt200"   onclick="setPrize('mtt200')">MTT 200</button>
+          <button class="preset-btn"        id="btn-satellite" onclick="setPrize('satellite')">サテライト</button>
+          <button class="preset-btn"        id="btn-custom"   onclick="setPrize('custom')">手入力</button>
         </div>
         <div id="prize-list-wrap" class="prize-list"></div>
+        <div id="satellite-wrap" style="display:none">
+          <div style="font-size:9px;color:var(--dim);margin-bottom:6px">通過人数を入力（全員に同額）</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" id="satellite-seats" value="3" min="1"
+              style="width:60px;font-size:15px;font-weight:600;text-align:center"
+              oninput="updateSatellitePrizes()">
+            <span style="font-size:11px;color:var(--muted)">人通過</span>
+          </div>
+          <div id="satellite-prize-info" style="font-size:10px;color:var(--muted);margin-top:6px"></div>
+        </div>
         <div id="custom-prize-wrap">
           <div style="font-size:9px;color:var(--dim);margin-bottom:5px">1位から順にカンマ区切り</div>
-          <textarea id="custom-prizes" rows="3" oninput="render()">30380, 21920, 15880, 11520, 8340, 6120</textarea>
+          <textarea id="custom-prizes" rows="3" >30380, 21920, 15880, 11520, 8340, 6120</textarea>
         </div>
       </div>
 
@@ -309,14 +337,15 @@ const LABELS = ["A","B","C","D","E","F","G","H"];
 const PRESETS = {
   mtt1000: { label: "MTT 1000 players", values: [30380,21920,15880,11520,8340,6120,4480,3280,2780] },
   mtt200:  { label: "MTT 200 players",  values: [7656,5668,4196,3204,2456,1924,1484,1140,888] },
-  custom:  { label: "手入力", values: null },
+  custom:  { label: "手入力",            values: null },
 };
+let satelliteMode = false; // satellite Y-axis mode
 
 // ── State ──────────────────────────────────────────────────────────────────
 let players = [
-  {label:"A",stack:35},{label:"B",stack:20},
-  {label:"C",stack:20},{label:"D",stack:15},
-  {label:"E",stack:12},{label:"F",stack:10},
+  {label:"UTG",stack:35,dead:0},{label:"HJ",stack:20,dead:0},
+  {label:"CO", stack:20,dead:0},{label:"BTN",stack:15,dead:0},
+  {label:"SB", stack:12,dead:0.5},{label:"BB",stack:10,dead:1},
 ];
 let heroIdx = 0, villainIdx = 1;
 let prizeMode = "mtt1000";
@@ -350,7 +379,26 @@ function calcICM(stacks, prizes) {
 }
 
 // ── Prize helpers ──────────────────────────────────────────────────────────
+function getSatelliteSeats() {
+  return parseInt(document.getElementById("satellite-seats")?.value) || 3;
+}
+
+function updateSatellitePrizes() {
+  const seats = getSatelliteSeats();
+  const totalPlayers = players.length;
+  // prize = 100 per seat (normalized), 0 for busted
+  const info = document.getElementById("satellite-prize-info");
+  if (info) info.textContent = `${seats}人通過 / ${totalPlayers}人中 → 通過率表示に切替`;
+}
+
 function getPrizeList() {
+  if (prizeMode === "satellite") {
+    const seats = getSatelliteSeats();
+    // Add tiny tiebreak (0.0001) to stabilize Malmuth-Harville with equal prizes
+    const prizes = [];
+    for (let i = 0; i < seats; i++) prizes.push(100 - i * 0.0001);
+    return prizes;
+  }
   if (prizeMode === "custom") {
     return document.getElementById("custom-prizes").value
       .split(/[,\s\/]+/).map(s=>s.trim()).filter(Boolean).map(Number);
@@ -360,16 +408,28 @@ function getPrizeList() {
 
 function setPrize(mode) {
   prizeMode = mode;
-  ["mtt1000","mtt200","custom"].forEach(k => {
-    document.getElementById("btn-"+k).classList.toggle("active", k===mode);
+  ["mtt1000","mtt200","satellite","custom"].forEach(k => {
+    const el = document.getElementById("btn-"+k);
+    if (el) el.classList.toggle("active", k===mode);
   });
   const listWrap = document.getElementById("prize-list-wrap");
   const customWrap = document.getElementById("custom-prize-wrap");
+  const satWrap = document.getElementById("satellite-wrap");
   if (mode === "custom") {
+    satelliteMode = false;
     listWrap.innerHTML = "";
     customWrap.style.display = "block";
-  } else {
+    satWrap.style.display = "none";
+  } else if (mode === "satellite") {
+    satelliteMode = true;
+    listWrap.innerHTML = "";
     customWrap.style.display = "none";
+    satWrap.style.display = "block";
+    updateSatellitePrizes();
+  } else {
+    satelliteMode = false;
+    customWrap.style.display = "none";
+    satWrap.style.display = "none";
     listWrap.innerHTML = PRESETS[mode].values.map((v,i)=>
       `<div class="prize-list-row"><span class="prize-list-rank">${i+1}位</span><span>$${v.toLocaleString()}</span></div>`
     ).join("");
@@ -385,11 +445,17 @@ function renderPlayerList() {
       <span class="player-name-label" style="color:${COLORS[i]}">${p.label}</span>
       <input type="number" value="${p.stack}" min="1" oninput="updateStack(${i},this.value)"
         class="stack-input" style="width:100%">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:1px">
+        <div class="dead-label">DEAD</div>
+        <input type="number" value="${p.dead||0}" min="0" step="0.5" oninput="updateDead(${i},this.value)"
+          class="dead-input">
+      </div>
       <button class="del-btn" onclick="removePlayer(${i})">✕</button>
     </div>
   `).join("");
 
   document.getElementById("add-player-btn").style.display = players.length >= 8 ? "none" : "block";
+  updatePotDisplay();
 
   // Selects
   const heroSel = document.getElementById("hero-sel");
@@ -410,6 +476,28 @@ function renderPlayerList() {
 
 function updateLabel(i, v) { players[i].label = v; renderPlayerList(); }
 function updateName(i, v) { players[i].name = v; renderPlayerList(); }
+function updateDead(i, v) {
+  players[i].dead = v === "" ? 0 : Number(v);
+  updatePotDisplay();
+}
+
+function updatePotDisplay() {
+  const totalDead = players.reduce((s,p) => s + (p.dead||0), 0);
+  const potEl = document.getElementById("pot-display");
+  const potVal = document.getElementById("pot-val");
+  const potDetail = document.getElementById("pot-detail");
+  if (totalDead > 0) {
+    potEl.style.display = "block";
+    potVal.textContent = totalDead.toFixed(1) + " BB";
+    const parts = players
+      .filter(p => (p.dead||0) > 0)
+      .map(p => `${p.label}: ${p.dead}bb`).join("  ");
+    potDetail.textContent = parts;
+  } else {
+    potEl.style.display = "none";
+  }
+}
+
 function updateStack(i, v) {
   players[i].stack = v === "" ? "" : Number(v);
   // Update selects without full re-render to preserve input focus
@@ -422,7 +510,7 @@ function updateStack(i, v) {
 
 function addPlayer() {
   if (players.length >= 8) return;
-  players.push({ label: LABELS[players.length], stack: 12 });
+  players.push({ label: LABELS[players.length], stack: 12, dead: 0 });
   renderPlayerList();
 }
 
@@ -446,17 +534,20 @@ function showError(msg) {
 function generate() {
   showError("");
   try {
-    const prizeList = getPrizeList();
-    if (!prizeList || prizeList.some(isNaN) || prizeList.length === 0)
+    const rawPrizeList = getPrizeList();
+    if (!rawPrizeList || rawPrizeList.some(isNaN) || rawPrizeList.length === 0)
       throw new Error("賞金構造が無効です");
-    const stacks = players.map(p => Number(p.stack));
+    const stacks = players.map(p => Number(p.stack) - Number(p.dead||0));
+    // Scale prizes so min value >= 1000 to avoid floating point rounding issues
+    const prizeScale = Math.max(1, 1000 / Math.min(...rawPrizeList.filter(v=>v>0)));
+    const prizeList = rawPrizeList.map(v => v * prizeScale);
     if (stacks.some(isNaN) || stacks.some(s => s <= 0))
       throw new Error("スタックが無効です");
     if (heroIdx === villainIdx)
       throw new Error("ヒーローとビランは別のプレイヤーにしてください");
 
     const chipRange = Math.min(stacks[heroIdx], stacks[villainIdx]);
-    const steps = 40;
+    const steps = 80;
 
     // raw ICM map
     const rawMap = new Map();
@@ -481,10 +572,11 @@ function generate() {
       const icmMir = rawMap.get(neg) || icmNow;
 
       xLabels.push(delta);
-      heroNormalData.push(Math.round(icmNow[heroIdx]));
-      heroData.push(Math.round(icmMir[heroIdx]));
+      const rnd = v => v / prizeScale;
+      heroNormalData.push(rnd(icmNow[heroIdx]));
+      heroData.push(rnd(icmMir[heroIdx]));
       players.forEach((p, i) => {
-        if (i !== heroIdx) seriesData[i].push(Math.round(icmNow[i]));
+        if (i !== heroIdx) seriesData[i].push(rnd(icmNow[i]));
       });
     }
 
@@ -494,7 +586,8 @@ function generate() {
     const pName = (p) => p.label;
     // Hero (solid, normal direction)
     datasets.push({
-      label: `${pName(players[heroIdx])} (${players[heroIdx].stack}bb)`,
+      label: `${pName(players[heroIdx])} (${effStack(players[heroIdx])}bb)`,
+        _playerIdx: heroIdx,
       data: heroNormalData,
       borderColor: COLORS[heroIdx],
       borderWidth: 4,
@@ -505,7 +598,8 @@ function generate() {
     });
     // Hero (dashed, mirrored)
     datasets.push({
-      label: `${pName(players[heroIdx])} (${players[heroIdx].stack}bb) [反転]`,
+      label: `${pName(players[heroIdx])} (${effStack(players[heroIdx])}bb) [反転]`,
+        _playerIdx: heroIdx,
       data: heroData,
       borderColor: COLORS[heroIdx],
       borderWidth: 5,
@@ -519,7 +613,8 @@ function generate() {
     players.forEach((p, i) => {
       if (i === heroIdx) return;
       datasets.push({
-        label: `${pName(p)} (${p.stack}bb)`,
+        label: `${pName(p)} (${effStack(p)}bb)`,
+          _playerIdx: i,
         data: seriesData[i],
         borderColor: COLORS[i],
         borderWidth: i === villainIdx ? 5 : 3,
@@ -530,9 +625,9 @@ function generate() {
       });
     });
 
-    drawChart(xLabels, datasets, chipRange, prizeList, stacks);
-    updateEVTable(prizeList, stacks);
-    updateMetrics(xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange);
+    drawChart(xLabels, datasets, chipRange, rawPrizeList, stacks);
+    updateEVTable(prizeList, stacks, prizeScale);
+    updateMetrics(xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange, prizeScale);
 
   } catch(e) {
     showError(e.message);
@@ -540,13 +635,15 @@ function generate() {
 }
 
 // ── Chart ──────────────────────────────────────────────────────────────────
+function effStack(p) { return Number(p.stack) - Number(p.dead||0); }
+
 function drawChart(xLabels, datasets, chipRange, prizeList, stacks) {
   const heroP    = players[heroIdx];
   const villainP = players[villainIdx];
 
   // Title
   document.getElementById("title-text").textContent =
-    `${heroP.label} →D — [${players.map(p=>`${p.label}(${p.stack}bb)`).join(", ")}]`;
+    `${heroP.label} →D — [${players.map(p=>`${p.label}(${effStack(p)}bb)`).join(", ")}]`;
   document.getElementById("prize-sub").textContent =
     "Prizes: " + prizeList.slice(0,6).map(v=>"$"+v.toLocaleString()).join(" / ")
     + (prizeList.length>6?" …":"") + `  ·  移動範囲: ±${chipRange}BB`;
@@ -584,9 +681,39 @@ function drawChart(xLabels, datasets, chipRange, prizeList, stacks) {
             },
             title: items => {
               const v = parseFloat(items[0].label);
-              return `${heroP.label}の移動: ${v > 0 ? "+" : ""}${v} BB`;
+              const dead = players.reduce((s,p) => s + (Number(p.dead)||0), 0);
+              const pot = dead + Math.abs(v) * 2;
+              const potStr = pot > 0 ? `  |  POT: ${pot.toFixed(1)}bb` : "";
+              return `${heroP.label}の移動: ${v > 0 ? "+" : ""}${v} BB${potStr}`;
             },
-            label: item => ` ${item.dataset.label}: $${Number(item.raw).toLocaleString()}`,
+            label: item => {
+              const v = parseFloat(item.chart.data.labels[item.dataIndex]);
+              const dsIdx = item.datasetIndex;
+              // Determine which player and direction this dataset represents
+              // datasets: 0=hero normal, 1=hero mirrored, 2+=others
+              let stackStr = "";
+              if (dsIdx === 0) {
+                // hero normal: delta=v means hero loses v chips
+                const eff = effStack(players[heroIdx]);
+                const s = eff + v; // delta>0 = hero gains in normal axis? 
+                // Actually: heroNormalData: s[heroIdx] += delta → delta>0 hero gains
+                stackStr = `${(eff + v).toFixed(1)}bb`;
+              } else if (dsIdx === 1) {
+                // hero mirrored: shows hero EV at -v delta
+                const eff = effStack(players[heroIdx]);
+                stackStr = `${(eff - v).toFixed(1)}bb`;
+              } else {
+                // other players: s[i] -= delta (villain loses when hero gains)
+                const pIdx = item.dataset._playerIdx;
+                if (pIdx !== undefined) {
+                  const eff = effStack(players[pIdx]);
+                  stackStr = pIdx === villainIdx ? `${(eff - v).toFixed(1)}bb` : `${eff}bb`;
+                }
+              }
+              const base = item.dataset.label.split(" (")[0];
+              const evStr = satelliteMode ? `${Number(item.raw).toFixed(2)}%` : `$${sig4(Number(item.raw))}`;
+              return ` ${base} (${stackStr}): ${evStr}`;
+            },
           }
         }
       },
@@ -616,10 +743,10 @@ function drawChart(xLabels, datasets, chipRange, prizeList, stacks) {
           ticks: {
             color: "#9dc4d8",
             font: { family: "'IBM Plex Mono'", size: 20 },
-            callback: v => v >= 1000 ? (v/1000).toFixed(0)+"k" : v,
+            callback: v => satelliteMode ? v.toFixed(1)+"%" : (v >= 1000 ? (v/1000).toFixed(0)+"k" : v),
           },
           title: {
-            display: true, text: "ICM $EV [USD]",
+            display: true, text: satelliteMode ? "通過率 [%]" : "ICM $EV [USD]",
             color: "#9dc4d8",
             font: { family: "'IBM Plex Mono'", size: 18 },
           },
@@ -692,8 +819,8 @@ function drawChart(xLabels, datasets, chipRange, prizeList, stacks) {
 }
 
 // ── EV Table ───────────────────────────────────────────────────────────────
-function updateEVTable(prizeList, stacks) {
-  const evs = calcICM(stacks, prizeList);
+function updateEVTable(prizeList, stacks, prizeScale=1) {
+  const evs = calcICM(stacks, prizeList).map(v => v / prizeScale);
   document.getElementById("ev-section").style.display = "block";
   document.getElementById("ev-list").innerHTML = players.map((p,i) => {
     const isH = i===heroIdx, isV = i===villainIdx;
@@ -704,9 +831,9 @@ function updateEVTable(prizeList, stacks) {
       <div class="ev-row">
         <div class="ev-line" style="${lineStyle}"></div>
         <span style="color:${COLORS[i]};font-weight:600;min-width:14px">${p.label}</span>
-        <span style="color:var(--dim)">${p.stack}bb</span>
+        <span style="color:var(--dim)">${Number(p.stack)-Number(p.dead||0)}bb</span>
         <span class="tag ${isH?'tag-hero':isV?'tag-villain':'tag-obs'}">${isH?"HERO":isV?"VIL":"OBS"}</span>
-        <span style="margin-left:auto;color:#7a9ab0">$${Math.round(evs[i]).toLocaleString()}</span>
+        <span style="margin-left:auto;color:#7a9ab0">${satelliteMode ? evs[i].toFixed(2)+'%' : '$'+sig4(evs[i])}</span>
       </div>`;
   }).join("");
 }
@@ -715,14 +842,21 @@ function updateEVTable(prizeList, stacks) {
 // Store chart data globally for cursor updates
 let _chartState = null;
 
-function updateMetrics(xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange) {
-  _chartState = { xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange };
+function updateMetrics(xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange, prizeScale=1) {
+  _chartState = { xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange, prizeScale };
   renderBottomPanel(0); // default at delta=0
+}
+
+function sig4(v) {
+  if (v === 0) return "0";
+  const p = Math.floor(Math.log10(Math.abs(v)));
+  const factor = Math.pow(10, 3 - p);
+  return (Math.round(v * factor) / factor).toLocaleString(undefined, {maximumFractionDigits: Math.max(0, 3-p)});
 }
 
 function renderBottomPanel(cursorDelta) {
   if (!_chartState) return;
-  const { xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange } = _chartState;
+  const { xLabels, heroData, heroNormalData, seriesData, prizeList, stacks, chipRange, prizeScale=1 } = _chartState;
 
   // Find closest index to cursorDelta
   const steps = xLabels.length;
@@ -730,7 +864,7 @@ function renderBottomPanel(cursorDelta) {
   xLabels.forEach((v, i) => { const d = Math.abs(v - cursorDelta); if (d < minDist) { minDist = d; idx = i; } });
 
   const delta = xLabels[idx];
-  const baseEVs = calcICM(stacks, prizeList);
+  const baseEVs = calcICM(stacks, prizeList).map(v => v / prizeScale);
 
   // ── Local BF calculation ──
   // For a small step around cursor point
@@ -780,8 +914,8 @@ function renderBottomPanel(cursorDelta) {
 
   // ── Render ──
   const fmt = v => v !== null ? v.toFixed(3) : "—";
-  const fmtD = v => { const s = Math.round(v); return (s >= 0 ? "+" : "") + "$" + Math.abs(s).toLocaleString(); };
-  const fmtDol = v => "$" + Math.round(v).toLocaleString();
+  const fmtD = v => (v >= 0 ? "+" : "-") + "$" + sig4(Math.abs(v));
+  const fmtDol = v => "$" + sig4(v);
   const bfColor = bf => bf === null ? "#7a9ab0" : bf > 1.2 ? "#ef5350" : bf > 1.05 ? "#ffa726" : "#66bb6a";
 
   // Cumulative BF for hero
@@ -825,17 +959,17 @@ function renderBottomPanel(cursorDelta) {
 
   const heroCard = `
     <div class="bf-card" style="border-color:${COLORS[heroIdx]}33">
-      <div class="bf-card-title" style="color:${COLORS[heroIdx]}">▶ HERO — ${heroP.label} (${heroP.stack}bb)</div>
+      <div class="bf-card-title" style="color:${COLORS[heroIdx]}">▶ HERO — ${heroP.label} (${Number(heroP.stack)-Number(heroP.dead||0)}bb)</div>
       <div class="cursor-pos">局所BF @ ${delta > 0 ? "+" : ""}${delta.toFixed(1)} BB</div>
-      <div class="bf-row"><span class="label">得る価値 (+${(xLabels[hi]-xLabels[idx]).toFixed(1)}bb)</span><span class="val" style="color:#66bb6a">+${heroGain > 0 ? "$"+Math.round(heroGain).toLocaleString() : "—"}</span></div>
-      <div class="bf-row"><span class="label">失う価値 (-${(xLabels[idx]-xLabels[lo]).toFixed(1)}bb)</span><span class="val" style="color:#ef5350">-${heroLose > 0 ? "$"+Math.round(heroLose).toLocaleString() : "—"}</span></div>
+      <div class="bf-row"><span class="label">得る価値 (+${(xLabels[hi]-xLabels[idx]).toFixed(1)}bb)</span><span class="val" style="color:#66bb6a">+${heroGain > 0 ? "$"+sig4(heroGain) : "—"}</span></div>
+      <div class="bf-row"><span class="label">失う価値 (-${(xLabels[idx]-xLabels[lo]).toFixed(1)}bb)</span><span class="val" style="color:#ef5350">-${heroLose > 0 ? "$"+sig4(heroLose) : "—"}</span></div>
       <div class="bf-big">
         <span class="label">局所 BF</span>
         <span class="val" style="color:#ffffff">${fmt(heroBF)}</span>
       </div>
       <div class="cursor-pos" style="margin-top:10px">累積BF（0BB → ±${absDelta}BB）</div>
-      <div class="bf-row"><span class="label">得る価値 (+${absDelta}bb)</span><span class="val" style="color:#66bb6a">${absDeltaNum > 0 ? "+$"+Math.round(heroCumGain).toLocaleString() : "—"}</span></div>
-      <div class="bf-row"><span class="label">失う価値 (-${absDelta}bb)</span><span class="val" style="color:#ef5350">${absDeltaNum > 0 ? "-$"+Math.round(heroCumLose).toLocaleString() : "—"}</span></div>
+      <div class="bf-row"><span class="label">得る価値 (+${absDelta}bb)</span><span class="val" style="color:#66bb6a">${absDeltaNum > 0 ? "+$"+sig4(heroCumGain) : "—"}</span></div>
+      <div class="bf-row"><span class="label">失う価値 (-${absDelta}bb)</span><span class="val" style="color:#ef5350">${absDeltaNum > 0 ? "-$"+sig4(heroCumLose) : "—"}</span></div>
       <div class="bf-big">
         <span class="label">累積 BF</span>
         <span class="val" style="color:#ffffff">${fmt(heroCumBF)}</span>
@@ -857,17 +991,17 @@ function renderBottomPanel(cursorDelta) {
 
   const vilCard = `
     <div class="bf-card" style="border-color:${COLORS[villainIdx]}33">
-      <div class="bf-card-title" style="color:${COLORS[villainIdx]}">▶ VILLAIN — ${vilP.label} (${vilP.stack}bb)</div>
+      <div class="bf-card-title" style="color:${COLORS[villainIdx]}">▶ VILLAIN — ${vilP.label} (${Number(vilP.stack)-Number(vilP.dead||0)}bb)</div>
       <div class="cursor-pos">局所BF @ ${delta > 0 ? "+" : ""}${delta.toFixed(1)} BB</div>
-      <div class="bf-row"><span class="label">得る価値 (+${(xLabels[idx]-xLabels[lo]).toFixed(1)}bb)</span><span class="val" style="color:#66bb6a">+${vGain > 0 ? "$"+Math.round(vGain).toLocaleString() : "—"}</span></div>
-      <div class="bf-row"><span class="label">失う価値 (-${(xLabels[hi]-xLabels[idx]).toFixed(1)}bb)</span><span class="val" style="color:#ef5350">-${vLose > 0 ? "$"+Math.round(vLose).toLocaleString() : "—"}</span></div>
+      <div class="bf-row"><span class="label">得る価値 (+${(xLabels[idx]-xLabels[lo]).toFixed(1)}bb)</span><span class="val" style="color:#66bb6a">+${vGain > 0 ? "$"+sig4(vGain) : "—"}</span></div>
+      <div class="bf-row"><span class="label">失う価値 (-${(xLabels[hi]-xLabels[idx]).toFixed(1)}bb)</span><span class="val" style="color:#ef5350">-${vLose > 0 ? "$"+sig4(vLose) : "—"}</span></div>
       <div class="bf-big">
         <span class="label">局所 BF</span>
         <span class="val" style="color:#ffffff">${fmt(vilBF)}</span>
       </div>
       <div class="cursor-pos" style="margin-top:10px">累積BF（0BB → ±${absDelta}BB）</div>
-      <div class="bf-row"><span class="label">得る価値 (+${absDelta}bb)</span><span class="val" style="color:#66bb6a">${absDeltaNum > 0 ? "+$"+Math.round(vilCumGain).toLocaleString() : "—"}</span></div>
-      <div class="bf-row"><span class="label">失う価値 (-${absDelta}bb)</span><span class="val" style="color:#ef5350">${absDeltaNum > 0 ? "-$"+Math.round(vilCumLose).toLocaleString() : "—"}</span></div>
+      <div class="bf-row"><span class="label">得る価値 (+${absDelta}bb)</span><span class="val" style="color:#66bb6a">${absDeltaNum > 0 ? "+$"+sig4(vilCumGain) : "—"}</span></div>
+      <div class="bf-row"><span class="label">失う価値 (-${absDelta}bb)</span><span class="val" style="color:#ef5350">${absDeltaNum > 0 ? "-$"+sig4(vilCumLose) : "—"}</span></div>
       <div class="bf-big">
         <span class="label">累積 BF</span>
         <span class="val" style="color:#ffffff">${fmt(vilCumBF)}</span>
@@ -875,7 +1009,7 @@ function renderBottomPanel(cursorDelta) {
     </div>`;
 
   // Card 3: General BF (full range, both perspectives)
-  const fmtDiff = v => (v >= 0 ? "+" : "") + "$" + Math.abs(Math.round(v)).toLocaleString();
+  const fmtDiff = v => (v >= 0 ? "+" : "-") + "$" + sig4(Math.abs(v));
   const genCard = `
     <div class="bf-card" style="border-color:#2d4a5a">
       <div class="bf-card-title" style="color:#9dc4d8">一般 BF（全移動域）</div>
@@ -923,7 +1057,7 @@ function renderBottomPanel(cursorDelta) {
           <div class="obs-name">
             <div class="obs-dot" style="background:${COLORS[i]}"></div>
             <span style="color:${COLORS[i]};font-weight:600">${players[i].label}</span>
-            <span style="color:var(--dim);font-size:10px">${players[i].stack}bb</span>
+            <span style="color:var(--dim);font-size:10px">${Number(players[i].stack)-Number(players[i].dead||0)}bb</span>
           </div>
           <div style="text-align:right">
             <span style="color:${col};font-weight:600">${fmtD(diff)}</span>
