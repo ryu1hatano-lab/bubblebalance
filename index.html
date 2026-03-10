@@ -332,7 +332,22 @@
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────
 const COLORS = ["#4fc3f7","#ffa726","#66bb6a","#ef5350","#ce93d8","#a1887f","#80cbc4","#fff176"];
-const LABELS = ["A","B","C","D","E","F","G","H"];
+const POSITION_LABELS = {
+  2: ["SB","BB"],
+  3: ["BTN","SB","BB"],
+  4: ["CO","BTN","SB","BB"],
+  5: ["UTG","CO","BTN","SB","BB"],
+  6: ["UTG","HJ","CO","BTN","SB","BB"],
+  7: ["UTG","UTG+1","HJ","CO","BTN","SB","BB"],
+  8: ["UTG","UTG+1","UTG+2","HJ","CO","BTN","SB","BB"],
+};
+const LABELS = ["UTG","HJ","CO","BTN","SB","BB","UTG+1","UTG+2"];
+
+function relabelPlayers() {
+  const n = players.length;
+  const labels = POSITION_LABELS[n] || LABELS.slice(0, n);
+  players.forEach((p, i) => { p.label = labels[i]; });
+}
 
 const PRESETS = {
   mtt1000: { label: "MTT 1000 players", values: [30380,21920,15880,11520,8340,6120,4480,3280,2780] },
@@ -347,6 +362,7 @@ let players = [
   {label:"CO", stack:20,dead:0},{label:"BTN",stack:15,dead:0},
   {label:"SB", stack:12,dead:0.5},{label:"BB",stack:10,dead:1},
 ];
+// relabel called after POSITION_LABELS is defined
 let heroIdx = 0, villainIdx = 1;
 let prizeMode = "mtt1000";
 let chart = null;
@@ -510,7 +526,8 @@ function updateStack(i, v) {
 
 function addPlayer() {
   if (players.length >= 8) return;
-  players.push({ label: LABELS[players.length], stack: 12, dead: 0 });
+  players.push({ label: "P", stack: 12, dead: 0 });
+  relabelPlayers();
   renderPlayerList();
 }
 
@@ -521,6 +538,7 @@ function removePlayer(i) {
   if (villainIdx === i) villainIdx = Math.min(1, players.length-1);
   if (heroIdx >= players.length)    heroIdx = 0;
   if (villainIdx >= players.length) villainIdx = Math.min(1, players.length-1);
+  relabelPlayers();
   renderPlayerList();
 }
 
@@ -600,6 +618,7 @@ function generate() {
     datasets.push({
       label: `${pName(players[heroIdx])} (${effStack(players[heroIdx])}bb) [反転]`,
         _playerIdx: heroIdx,
+        _mirror: true,
       data: heroData,
       borderColor: COLORS[heroIdx],
       borderWidth: 5,
@@ -688,31 +707,24 @@ function drawChart(xLabels, datasets, chipRange, prizeList, stacks) {
             },
             label: item => {
               const v = parseFloat(item.chart.data.labels[item.dataIndex]);
-              const dsIdx = item.datasetIndex;
-              // Determine which player and direction this dataset represents
-              // datasets: 0=hero normal, 1=hero mirrored, 2+=others
+              const pIdx = item.dataset._playerIdx;
               let stackStr = "";
-              if (dsIdx === 0) {
-                // hero normal: delta=v means hero loses v chips
-                const eff = effStack(players[heroIdx]);
-                const s = eff + v; // delta>0 = hero gains in normal axis? 
-                // Actually: heroNormalData: s[heroIdx] += delta → delta>0 hero gains
-                stackStr = `${(eff + v).toFixed(1)}bb`;
-              } else if (dsIdx === 1) {
-                // hero mirrored: shows hero EV at -v delta
-                const eff = effStack(players[heroIdx]);
-                stackStr = `${(eff - v).toFixed(1)}bb`;
-              } else {
-                // other players: s[i] -= delta (villain loses when hero gains)
-                const pIdx = item.dataset._playerIdx;
-                if (pIdx !== undefined) {
-                  const eff = effStack(players[pIdx]);
-                  stackStr = pIdx === villainIdx ? `${(eff - v).toFixed(1)}bb` : `${eff}bb`;
+              if (pIdx !== undefined && players[pIdx]) {
+                const eff = effStack(players[pIdx]);
+                const isMirror = item.dataset._mirror;
+                if (isMirror) {
+                  stackStr = `${(eff - v).toFixed(1)}bb`;
+                } else if (pIdx === heroIdx) {
+                  stackStr = `${(eff + v).toFixed(1)}bb`;
+                } else if (pIdx === villainIdx) {
+                  stackStr = `${(eff - v).toFixed(1)}bb`;
+                } else {
+                  stackStr = `${eff}bb`;
                 }
               }
               const base = item.dataset.label.split(" (")[0];
               const evStr = satelliteMode ? `${Number(item.raw).toFixed(2)}%` : `$${sig4(Number(item.raw))}`;
-              return ` ${base} (${stackStr}): ${evStr}`;
+              return stackStr ? ` ${base} (${stackStr}): ${evStr}` : ` ${item.dataset.label}: ${evStr}`;
             },
           }
         }
@@ -1095,6 +1107,7 @@ function attachCursorSync() {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
+relabelPlayers();
 setPrize("mtt1000");
 renderPlayerList();
 generate();
