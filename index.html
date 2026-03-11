@@ -832,7 +832,8 @@ function drawChart(xLabels, datasets, chipRange, prizeList, stacks) {
 
 // ── EV Table ───────────────────────────────────────────────────────────────
 function updateEVTable(prizeList, stacks, prizeScale=1) {
-  const evs = calcICM(stacks, prizeList).map(v => v / prizeScale);
+  const rawStacks = players.map(p => Number(p.stack));
+  const evs = calcICM(rawStacks, prizeList).map(v => v / prizeScale);
   document.getElementById("ev-section").style.display = "block";
   document.getElementById("ev-list").innerHTML = players.map((p,i) => {
     const isH = i===heroIdx, isV = i===villainIdx;
